@@ -1,0 +1,174 @@
+---
+title: "Running the linear model on the NCI-60 cell lines"
+author: "Jalal K. Siddiqui, PhD"
+date: "7/27/2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+The NCI-60 cancer cell lines were developed as a drug screening tool focusing on a range of cancer types.  In this vignette, we compare two major groups of NCI-60 cancer cell lines.  The first is the leukemia subgroup consising of 6 cell lines (CCRF-CEM, HL-60 (TB), K-562, MOLT-4, RPMI-8226, SR).  The second group is the breast/prostate/ovarian cell lines consisting of 14 total cell lines (BT-549, DU-145, HS 578T, IGROV1, MCF7, MDA-MB-231/ATCC, NCI/ADR-RES, OVCAR-3, OVCAR-4, OVCAR-5, OVCAR-8, PC-3, SK-OV-3, T-47D).  The latter cancers are grouped together as they contain common susceptibility loci.  This vigenette will highlight the analysis we conduct on the NCI-60 cancer cell lines.  
+
+## Loading in IntLIM and Files
+
+IntLIM, available from Github, can be installed as in the documentation.  Once IntLIM is installed, what is necessary is loading in the library.  
+
+```{r}
+rm(list = ls())
+library(IntLim)
+```
+
+For the NCI-60 cell lines, metabolomics and gene expression data were downloadable from the DTP website (https://wiki.nci.nih.gov/display/ncidtpdata/molecular+target+data).  The Metabolon data consisting of 353 metabolites and 58 cell lines with 177 technical replicates total was filtered for metabolites that had a median coefficient of variation of below 0.3.  The coefficient value was arbitrarily selected to filter out technical replicates having high variability.  The resulting metabolite abundance data set of 280 metabolites was subsequently log2 transformed. Probes from the Chiron Affymetrix U133 were mapped to genes using the Ensembl database hgu133.plus.db (Bioconductor package:  hgu133plus.db).  Probes mapping to more than one gene were removed.  In cases where more than one probe was matching to a given gene, only the probe with the highest mean expression was used for analysis.  This resulted in a total of 17,987 genes.   
+
+This data has been formatted for IntLIM.  We load in the data as follows.  The nci60.csv meta file contains a list of phenotypic data file, metabolite data file, gene expression data file, metabolite meta file, and gene expression meta file. The function OutputStats will give a summary of the NCI-60 data
+
+```{r}
+inputData <- IntLim::ReadData('nci60.csv',metabid='id',geneid='id')
+IntLim::OutputStats(inputData)
+```
+
+From the OutputStats, we find that we have gene expression data involving 17,987 genes with 57 cell line sample and metabolite abundance data involving 280 metabolites with 58 cell lines.  
+
+## Filtering Gene Expression and Metabolite Data
+
+We remove genes with mean belows below the 10th percentile.  Furthermore, we remove metabolites with more than 80% missing values.  This results in gene expression data involving 16188 genes and 57 cell lines and metabolite abundance data involving 220 metabolites and 58 cell lines.  
+
+```{r}
+inputDatafilt <- IntLim::FilterData(inputData,geneperc=0.10, metabmiss = 0.80)
+IntLim::OutputStats(inputDatafilt)
+```
+
+We can obtain boxplot distributions of the data as follows. This is used to make figures.  
+
+```{r}
+IntLim::PlotDistributions(inputDatafilt)
+```
+
+## Principal Component Analysis
+
+The principal component analysis is performed on filtered metabolite and gene expression data to obtain visual representations showing how different sub-sections of the data could be grouped into different clusters.  Common samples belonging to either the Leukemia or Breast/Prostate/Ovarian groups are shown.  Blue samples indicate leukemia cell lines and red samples indicate BPO.  Note the clear delineation of samples.  
+
+```{r}
+PlotPCA(inputDatafilt, stype = "cancergroup", common = T)
+```
+
+## Running Linear Model
+
+The linear model is for integrating transcriptomic and metabolomics data is:  E(m|g,t) = β1 + β2 g + β3 p + β4 (g:p) + ε where ‘m’ and ‘g’ are log-transformed metabolite abundances and gene levels respectively, ‘p’ is phenotype (cancer type, patient diagnosis, treatment group, etc), ‘(g:p)’ is the association between gene expression and phenotype, and ‘ε’ is the error term that is normally distributed.  A statistically significant p value of the ‘(g:p)’ association term indicates that the slope relating gene expression and metabolite abundance is different from one phenotype compared to another. We run a linear model on common cell lines of the leukemia (n = 6) and BPO (n = 14) that included 16188 genes and 220 metabolites (total of 3,561,360 possible associations and hence models).  For genes and metabolites that had standard deviations of 0 in one of the groups, we assign a p value of NA.  The model is run as below by calling RunIntLim().  DistPvalues() allows us to obtain a distribution of p-values for the (g:p) term.  
+
+```{r}
+myres <- IntLim::RunIntLim(inputDatafilt, stype="cancergroup")
+IntLim::DistPvalues(myres)
+```
+
+The next step is to process the results of this model by filtering the results of the linear model by FDR-adjusted p-value cutoff (0.10 selected here) for the (g:p) association coefficient and calculate the correlations of the gene-metabolite pairs in each group (BPO and Leukemia) for the filtered results.  We further may only interested in results that have an absolute correlation value difference (0.50 selected here). This is done with the ProcessResults function.  In addition we also develop a heatmap of the gene-metabolite association correlations for the selected groups.  
+
+```{r}
+library(RColorBrewer)
+myres <- IntLim::ProcessResults(myres,  inputDatafilt, diffcorr = 0.5, pvalcutoff = 0.10)
+IntLim::CorrHeatmap(myres)
+dim(myres@corr)
+write.csv(myres@corr, file = "NCI60pairs.csv")
+```
+
+From this model we find 1009 gene-metabolite correlations that have an association FDR-adjusted p-value of 0.10 and an absolute value correlation difference of 0.5 or greater.  The top pairs are shown below.  
+
+```{r}
+corr.table <- myres@corr
+abs.corrdiff <- abs(myres@corr$BPO - myres@corr$Leukemia)
+sort.table <- corr.table[order(-abs.corrdiff),]
+sort.table[1:20,]
+```
+
+We can show some example plots of some of these pairs.  The first example is the FAM174B vs. malic acid.  There is a positive correlation for BPO but a negative correlation for Leukemia.  
+
+```{r}
+IntLim::PlotGMPair(inputDatafilt, stype = "cancergroup", geneName = "FAM174B", metabName = "malic acid")
+```
+
+Another example is DLG4 vs. leucine.  
+
+```{r}
+IntLim::PlotGMPair(inputDatafilt, stype = "cancergroup", geneName = "DLG4", metabName = "leucine")
+```
+Another example is DNER vs. L-beta-imidazolelactic acid.  There is a positive correlation for Leukemia and a negative correlation for BPO.  
+
+```{r}
+IntLim::PlotGMPair(inputDatafilt, stype = "cancergroup", geneName = "DNER", metabName = "L-beta-imidazolelactic acid")
+```
+## Clustering the Heatmap
+
+We will cut the heatmap into 2 trees. From there we can acquire a list of unique gene and metabolite pairs that we will run in IPA.  
+
+```{r}
+# Cut the tree by k = 2
+hc.rows<- hclust(dist(myres@corr[,c(3,4)]))
+ct<- cutree(hc.rows, k=2) 
+
+# Clusters of gene-metaboltie pair table. 
+cluster.1 <- myres@corr[which(ct == 1), ]
+cluster.2 <- myres@corr[which(ct == 2), ]
+
+#Sizes of clusters
+dim(cluster.1)
+dim(cluster.2)
+```
+
+Check for which cluster is which.  
+
+```{r}
+summary(cluster.1$Leukemia)
+summary(cluster.2$Leukemia)
+#Cluster.1 is leukemia correlated and Cluster.2 is leukemia anti-correlated
+```
+
+The gene lists are output for each cluster.  
+
+```{r}
+# Unique genes in each cluster
+leuk.corr.uniqgene <- unique(cluster.2$gene)
+leuk.anti.corr.uniqgene <- unique(cluster.1$gene)
+
+# Write csv files for genes
+write.csv(leuk.corr.uniqgene, "leuk.corr.uniqgene.csv")
+write.csv(leuk.anti.corr.uniqgene, "leuk.anti.corr.uniqgene.csv")
+
+## Number of unique genes in each cluster
+length(leuk.corr.uniqgene)
+length(leuk.anti.corr.uniqgene)
+
+# Genes that are intersecting
+intersect(leuk.corr.uniqgene,leuk.anti.corr.uniqgene )
+```
+
+We also find the Leukemia correlated cluster has 545 gene-metabolite pairs and the lekemia anti-correlated cluster has 464 gene-metabolite pairs.  We have 429 unique genes in the leukemia-correlated cluster and 356 unique genes in the leukemia anti-correlated cluster. Interestingly none of these genes are overlapping.   
+
+We do the same for metabolites.  
+
+```{r}
+# Unique metabolites in each cluster
+leuk.corr.uniqmetab <- unique(cluster.2$metab)
+leuk.anti.corr.uniqmetab <- unique(cluster.1$metab)
+length(leuk.corr.uniqmetab)
+length(leuk.anti.corr.uniqmetab)
+length(intersect(leuk.corr.uniqmetab, leuk.anti.corr.uniqmetab))
+```
+
+There are 54 unique metabolites in the leukemia correlated cluster and 45 in the anti-correlated cluster.  31 are shared by both.  
+Lets match the metabolites to the HMDB ID.  We have an hmdb.match file from the breast cancer data Metabolon file.  
+
+```{r}
+hmdb.match <- read.csv("hmdb.match.csv")
+
+leuk.corr.metab.intersect <- intersect(as.character(leuk.corr.uniqmetab), as.character(hmdb.match$id))
+length(leuk.corr.metab.intersect)
+
+leuk.anti.corr.metab.intersect <- intersect(as.character(leuk.anti.corr.uniqmetab), as.character(hmdb.match$id))
+length(leuk.anti.corr.metab.intersect)
+```
+
+Given that there are few matches (9/54 for the leukemia correlated cluster and 10/54 for the anti-correlated cluster) we decide not to pursue a metabolomics analysis.  
