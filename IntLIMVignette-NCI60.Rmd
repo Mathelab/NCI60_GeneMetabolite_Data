@@ -63,7 +63,7 @@ The linear model is for integrating transcriptomic and metabolomics data is:  E(
 ```{r}
 myres <- IntLim::RunIntLim(inputDatafilt, stype="cancergroup")
 IntLim::DistPvalues(myres)
-IntLim::pvalCorrVolcano(myres, inputDatafilt, diffcorr = 0, pvalcutoff = 1)
+IntLim::pvalCorrVolcano(myres, inputDatafilt, diffcorr = 0.5, pvalcutoff = 0.10)
 ```
 
 The next step is to process the results of this model by filtering the results of the linear model by FDR-adjusted p-value cutoff (0.10 selected here) for the (g:p) association coefficient and calculate the correlations of the gene-metabolite pairs in each group (BPO and Leukemia) for the filtered results.  We further may only interested in results that have an absolute correlation value difference (0.50 selected here). This is done with the ProcessResults function.  In addition we also develop a heatmap of the gene-metabolite association correlations for the selected groups.  
