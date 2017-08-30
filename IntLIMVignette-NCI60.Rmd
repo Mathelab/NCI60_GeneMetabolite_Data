@@ -19,7 +19,7 @@ IntLIM, available from Github, can be installed as in the documentation.  Once I
 
 ```{r}
 rm(list = ls())
-library(IntLim)
+library(IntLIM)
 ```
 
 For the NCI-60 cell lines, metabolomics and gene expression data were downloadable from the DTP website (https://wiki.nci.nih.gov/display/ncidtpdata/molecular+target+data).  The Metabolon data consisting of 353 metabolites and 58 cell lines with 177 technical replicates total was filtered for metabolites that had a median coefficient of variation of below 0.3.  The coefficient value was arbitrarily selected to filter out technical replicates having high variability.  The resulting metabolite abundance data set of 280 metabolites was subsequently log2 transformed. Probes from the Chiron Affymetrix U133 were mapped to genes using the Ensembl database hgu133.plus.db.  Probes mapping to more than one gene were removed.  In cases where more than one probe was matching to a given gene, only the probe with the highest mean expression was used for analysis.  This resulted in a total of 17,987 genes.   
@@ -27,8 +27,8 @@ For the NCI-60 cell lines, metabolomics and gene expression data were downloadab
 This data has been formatted for IntLIM.  We load in the data as follows.  The nci60.csv meta file contains a list of phenotypic data file, metabolite data file, gene expression data file, metabolite meta file, and gene expression meta file. The function OutputStats will give a summary of the NCI-60 data
 
 ```{r}
-inputData <- IntLim::ReadData('nci60.csv',metabid='id',geneid='id')
-IntLim::ShowStats(inputData)
+inputData <- IntLIM::ReadData('nci60.csv',metabid='id',geneid='id')
+IntLIM::ShowStats(inputData)
 ```
 
 From the OutputStats, we find that we have gene expression data involving 17,987 genes with 57 cell line sample and metabolite abundance data involving 280 metabolites with 58 cell lines.  
@@ -38,14 +38,14 @@ From the OutputStats, we find that we have gene expression data involving 17,987
 We remove genes with mean belows below the 10th percentile.  Furthermore, we remove metabolites with more than 80% missing values.  This results in gene expression data involving 16188 genes and 57 cell lines and metabolite abundance data involving 220 metabolites and 58 cell lines.  
 
 ```{r}
-inputDatafilt <- IntLim::FilterData(inputData,geneperc=0.10, metabmiss = 0.80)
-IntLim::ShowStats(inputDatafilt)
+inputDatafilt <- IntLIM::FilterData(inputData,geneperc=0.10, metabmiss = 0.80)
+IntLIM::ShowStats(inputDatafilt)
 ```
 
 We can obtain boxplot distributions of the data as follows. This is used to make figures.  
 
 ```{r}
-IntLim::PlotDistributions(inputDatafilt, palette = c('black', 'black'))
+IntLIM::PlotDistributions(inputDatafilt, palette = c('black', 'black'))
 ```
 
 ## Principal Component Analysis
@@ -61,17 +61,17 @@ PlotPCA(inputDatafilt, stype = "cancergroup", common = T)
 The linear model is for integrating transcriptomic and metabolomics data is:  E(m|g,t) = β1 + β2 g + β3 p + β4 (g:p) + ε where ‘m’ and ‘g’ are log-transformed metabolite abundances and gene levels respectively, ‘p’ is phenotype (cancer type, patient diagnosis, treatment group, etc), ‘(g:p)’ is the association between gene expression and phenotype, and ‘ε’ is the error term that is normally distributed.  A statistically significant p value of the ‘(g:p)’ association term indicates that the slope relating gene expression and metabolite abundance is different from one phenotype compared to another. We run a linear model on common cell lines of the leukemia (n = 6) and BPO (n = 14) that included 16188 genes and 220 metabolites (total of 3,561,360 possible associations and hence models).  For genes and metabolites that had standard deviations of 0 in one of the groups, we assign a p value of NA.  The model is run as below by calling RunIntLim().  DistPvalues() allows us to obtain a distribution of p-values for the (g:p) term.  We also show a volcano plot showing the relationship between phenotype correlations and FDR adjusted p-values.  
 
 ```{r}
-myres <- IntLim::RunIntLim(inputDatafilt, stype="cancergroup")
-IntLim::DistPvalues(myres)
-IntLim::pvalCorrVolcano(myres, inputDatafilt, diffcorr = 0.5, pvalcutoff = 0.10)
+myres <- IntLIM::RunIntLim(inputDatafilt, stype="cancergroup")
+IntLIM::DistPvalues(myres)
+IntLIM::pvalCorrVolcano(myres, inputDatafilt, diffcorr = 0.5, pvalcutoff = 0.10)
 ```
 
 The next step is to process the results of this model by filtering the results of the linear model by FDR-adjusted p-value cutoff (0.10 selected here) for the (g:p) association coefficient and calculate the correlations of the gene-metabolite pairs in each group (BPO and Leukemia) for the filtered results.  We further may only interested in results that have an absolute correlation value difference (0.50 selected here). This is done with the ProcessResults function.  In addition we also develop a heatmap of the gene-metabolite association correlations for the selected groups.  
 
 ```{r}
 library(RColorBrewer)
-myres <- IntLim::ProcessResults(myres,  inputDatafilt, diffcorr = 0.5, pvalcutoff = 0.10)
-IntLim::CorrHeatmap(myres)
+myres <- IntLIM::ProcessResults(myres,  inputDatafilt, diffcorr = 0.5, pvalcutoff = 0.10)
+IntLIM::CorrHeatmap(myres)
 dim(myres@filt.results)
 
 OutputResults(inputResults = myres, filename = "NCI60pairs.csv")
@@ -90,19 +90,19 @@ sort.table[1:20,]
 We can show some example plots of some of these pairs.  The first example is the FAM174B vs. malic acid.  There is a positive correlation for BPO but a negative correlation for Leukemia.  
 
 ```{r}
-IntLim::PlotGMPair(inputDatafilt, stype = "cancergroup", geneName = "FSCN1", metabName = "malic acid")
+IntLIM::PlotGMPair(inputDatafilt, stype = "cancergroup", geneName = "FSCN1", metabName = "malic acid")
 ```
 
 Another example is DLG4 vs. leucine.  
 
 ```{r}
-IntLim::PlotGMPair(inputDatafilt, stype = "cancergroup", geneName = "DLG4", metabName = "leucine")
+IntLIM::PlotGMPair(inputDatafilt, stype = "cancergroup", geneName = "DLG4", metabName = "leucine")
 ```
 
 Another example is DNER vs. L-beta-imidazolelactic acid.  There is a positive correlation for Leukemia and a negative correlation for BPO.  
 
 ```{r}
-IntLim::PlotGMPair(inputDatafilt, stype = "cancergroup", geneName = "DNER", metabName = "L-beta-imidazolelactic acid")
+IntLIM::PlotGMPair(inputDatafilt, stype = "cancergroup", geneName = "DNER", metabName = "L-beta-imidazolelactic acid")
 ```
 
 ## Clustering the Heatmap
